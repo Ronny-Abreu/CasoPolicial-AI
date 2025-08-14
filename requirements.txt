@@ -1,0 +1,3 @@
+# Librerías necesarias
+requests
+python-dotenv
