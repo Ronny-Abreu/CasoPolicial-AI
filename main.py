@@ -52,10 +52,8 @@ def text_api(endpoint, text):
     # Versión más reciente de Text Analytics
     if endpoint == "keyPhrases":
         url = f"{base_url}/text/analytics/v3.1/keyPhrases"
-
     elif endpoint == "entities/recognition/general":
         url = f"{base_url}/text/analytics/v3.1/entities/recognition/general"
-
     else:
         url = f"{base_url}/text/analytics/v3.1/{endpoint}"
     
@@ -63,20 +61,15 @@ def text_api(endpoint, text):
                "Content-Type": "application/json"}
     payload = {"documents":[{"id":"1","language":LANG_CODE,"text":text[:5000]}]}
     
-    print(f"[DEBUG] Intentando endpoint: {url}")
     r = requests.post(url, headers=headers, json=payload)
     try:
         data = r.json()
     except Exception:
         return None
     
-    print(f"[DEBUG] Status code: {r.status_code}")
     if r.status_code != 200 or "documents" not in data:
-        print(f"[LANGUAGE ERROR] {endpoint} -> Status: {r.status_code}")
-        print(f"[LANGUAGE ERROR] Respuesta: {json.dumps(data, ensure_ascii=False)}")
         return None
     
-    print(f"[DEBUG] {endpoint} exitoso")
     return data
 
 # Verificar carpeta salida/ exista
@@ -112,7 +105,6 @@ with open(OUT_CSV, "w", newline="", encoding="utf-8") as f:
     w.writeheader()
     
     for path in files:
-        print("Procesando:", os.path.basename(path))
         txt = ocr_image(path)
         keyp_data = text_api("keyPhrases", txt)
         ents_data = text_api("entities/recognition/general", txt)
@@ -212,3 +204,78 @@ for path in files:
 print("\n" + "="*60)
 print("🎯 Análisis completado exitosamente")
 print("="*60)
+
+# Generar archivo de métricas sin mostrar en consola
+metricas_file = OUT_CSV.replace('.csv', '_METRICAS.txt')
+with open(metricas_file, "w", encoding="utf-8") as f:
+    f.write("="*80 + "\n")
+    f.write("📊 MÉTRICAS DE EFECTIVIDAD - SISTEMA OCR + NLP\n")
+    f.write("="*80 + "\n\n")
+    
+    # Calcular métricas básicas
+    total_imagenes = len(files)
+    imagenes_procesadas = 0
+    imagenes_con_texto = 0
+    imagenes_con_entidades = 0
+    total_palabras_clave = 0
+    total_entidades = 0
+    
+    for path in files:
+        filename = os.path.basename(path)
+        
+        # Leer datos del CSV
+        with open(OUT_CSV, "r", encoding="utf-8") as csv_file:
+            lines = csv_file.readlines()
+            for line in lines[1:]:  # Saltar header
+                if filename in line:
+                    data = line.strip().split(',')
+                    if len(data) >= 10:
+                        imagenes_procesadas += 1
+                        
+                        # Métricas de texto OCR
+                        texto = data[1]
+                        if texto and texto != "":
+                            imagenes_con_texto += 1
+                        
+                        # Métricas de palabras clave
+                        palabras_clave = data[2]
+                        if palabras_clave and palabras_clave != "":
+                            num_palabras = len(palabras_clave.split('; '))
+                            total_palabras_clave += num_palabras
+                        
+                        # Métricas de entidades
+                        entidades_personas = data[3]
+                        entidades_org = data[4]
+                        entidades_ubic = data[5]
+                        entidades_fechas = data[6]
+                        entidades_numeros = data[7]
+                        entidades_urls = data[8]
+                        entidades_otras = data[9]
+                        
+                        total_entidades_imagen = 0
+                        for entidad in [entidades_personas, entidades_org, entidades_ubic, 
+                                      entidades_fechas, entidades_numeros, entidades_urls, entidades_otras]:
+                            if entidad and entidad != "":
+                                total_entidades_imagen += len(entidad.split('; '))
+                        
+                        total_entidades += total_entidades_imagen
+                        
+                        if total_entidades_imagen > 0:
+                            imagenes_con_entidades += 1
+                        break
+    
+    # Calcular tasas de éxito
+    tasa_exito_ocr = (imagenes_con_texto / total_imagenes) * 100 if total_imagenes > 0 else 0
+    tasa_exito_nlp = (imagenes_con_entidades / total_imagenes) * 100 if total_imagenes > 0 else 0
+    
+    # Escribir métricas en archivo
+    f.write(f"📅 Fecha de análisis: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+    f.write(f"📸 Total de imágenes: {total_imagenes}\n")
+    f.write(f"✅ Imágenes procesadas: {imagenes_procesadas}\n")
+    f.write(f"📝 Imágenes con texto: {imagenes_con_texto}\n")
+    f.write(f"🎯 Imágenes con entidades: {imagenes_con_entidades}\n")
+    f.write(f"🔑 Total palabras clave: {total_palabras_clave}\n")
+    f.write(f"🏷️  Total entidades: {total_entidades}\n")
+    f.write(f"🖼️  Tasa éxito OCR: {tasa_exito_ocr:.1f}%\n")
+    f.write(f"🧠 Tasa éxito NLP: {tasa_exito_nlp:.1f}%\n")
+    f.write(f"📊 Promedio entidades/imagen: {total_entidades/total_imagenes:.1f}\n")
